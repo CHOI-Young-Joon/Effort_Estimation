@@ -723,11 +723,11 @@ function renderEstimateRows() {
     `;
     el.estimateRows.appendChild(groupRow);
 
-    group.items.forEach((item) => {
+    group.items.forEach((item, itemIndex) => {
       const tr = document.createElement("tr");
       tr.className = "estimate-detail-row";
       tr.innerHTML = `
-        <td><input value="${escapeAttr(item.phase)}" data-estimate="${item.index}" data-field="phase"></td>
+        <td class="estimate-sequence">${itemIndex + 1}</td>
         <td><textarea data-estimate="${item.index}" data-field="task">${escapeHtml(item.task)}</textarea></td>
         <td><input type="number" step="0.5" min="0" value="${item.days}" data-estimate="${item.index}" data-field="days"></td>
         <td class="row-actions">
@@ -896,6 +896,23 @@ function excelTitle() {
   }
   const detail = [a.product, a.topology, a.workType].filter(Boolean).join(" / ");
   return `WBS - ${a.customerName || ""}${detail ? ` (${detail})` : ""}`;
+}
+
+function safeFilePart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_") || "WBS";
+}
+
+function wbsFileName() {
+  const a = state.answers;
+  const date = formatDate(new Date()).replaceAll("-", "");
+  const product = a.workType === "이기종 마이그레이션" ? a.targetDb || a.sourceDb : a.product;
+  const topology = a.workType === "이기종 마이그레이션" ? "이기종마이그레이션" : a.topology;
+  const parts = [a.customerName, product, topology, date].map(safeFilePart).filter(Boolean);
+  return `${parts.join("_")}.xlsx`;
 }
 
 function wbsPhaseParts(phase) {
@@ -1256,7 +1273,7 @@ document.getElementById("downloadMailButton").addEventListener("click", () => {
 });
 
 document.getElementById("downloadWbsButton").addEventListener("click", () => {
-  downloadBlob("effort-estimation-wbs.xlsx", buildWbsXlsxBlob());
+  downloadBlob(wbsFileName(), buildWbsXlsxBlob());
 });
 
 ask("customerName");
