@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>공수 산정 챗봇</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="workspace">
+      <header class="top-panel">
+        <div class="brand-block">
+          <img class="brand-logo" src="./RockPlace_CI.jpg" alt="Rockplace">
+        </div>
+
+        <div class="status-card">
+          <div class="status-row">
+            <span>진행 단계</span>
+            <strong id="stepLabel">입력</strong>
+          </div>
+          <div class="progress-track">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+        </div>
+
+        <div class="summary-card">
+          <h2>입력 요약</h2>
+          <dl id="summaryList"></dl>
+        </div>
+      </header>
+
+      <section class="main-panel">
+        <nav class="tabs" aria-label="작업 단계">
+          <button class="tab is-active" data-view="chatView">1. 대화 입력</button>
+          <button class="tab" data-view="reviewView">2. 수정 검토</button>
+          <button class="tab" data-view="outputView">3. 최종 산출</button>
+        </nav>
+
+        <section id="chatView" class="view is-active">
+          <div id="chatLog" class="chat-log" aria-live="polite"></div>
+          <div id="choiceArea" class="choice-area"></div>
+          <form id="freeTextForm" class="input-row">
+            <input id="freeTextInput" type="text" autocomplete="off" placeholder="답변을 입력하세요">
+            <button type="submit">입력</button>
+          </form>
+        </section>
+
+        <section id="reviewView" class="view">
+          <section class="review-shell">
+            <div class="review-toolbar">
+              <div>
+                <h2>수정 검토</h2>
+                <p>공수 항목을 수정하면 WBS와 메일 초안이 함께 갱신됩니다.</p>
+              </div>
+              <div class="review-tabs" role="tablist" aria-label="수정 항목">
+                <button class="review-tab is-active" type="button" data-review-view="estimatePane">공수 항목</button>
+                <button class="review-tab" type="button" data-review-view="wbsPane">WBS 초안</button>
+                <button class="review-tab" type="button" data-review-view="mailPane">메일 문구</button>
+              </div>
+            </div>
+
+            <section id="estimatePane" class="review-pane is-active">
+              <div class="panel-heading">
+                <h2>공수 항목 수정</h2>
+                <button id="addLineButton" type="button">마지막에 추가</button>
+              </div>
+              <div class="table-wrap">
+                <table class="estimate-table">
+                  <thead>
+                    <tr>
+                      <th>단계</th>
+                      <th>작업 내용</th>
+                      <th>공수 M/D</th>
+                      <th>작업</th>
+                    </tr>
+                  </thead>
+                  <tbody id="estimateRows"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="wbsPane" class="review-pane">
+              <div class="panel-heading">
+                <h2>WBS 초안 수정</h2>
+                <div class="wbs-controls">
+                  <label>기준 시작일 <input id="wbsStartDate" type="date"></label>
+                  <button id="applyWbsStartButton" type="button">일정 재계산</button>
+                  <button id="addWbsButton" type="button">WBS 항목 추가</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <div id="wbsPreviewTitle" class="wbs-preview-title"></div>
+                <table class="wbs-table">
+                  <thead>
+                    <tr>
+                      <th>단계</th>
+                      <th>Activities</th>
+                      <th>시작일</th>
+                      <th>완료일</th>
+                      <th>기간(일)</th>
+                      <th>담당자</th>
+                      <th>산출물</th>
+                      <th>작업</th>
+                    </tr>
+                  </thead>
+                  <tbody id="wbsRows"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="mailPane" class="review-pane">
+              <div class="panel-heading">
+                <h2>메일 문구 수정</h2>
+                <button id="refreshMailButton" type="button">공수 기준으로 재작성</button>
+              </div>
+              <textarea id="mailEditor" class="mail-editor"></textarea>
+            </section>
+          </section>
+        </section>
+
+        <section id="outputView" class="view">
+          <div class="output-layout">
+            <section class="result-card">
+              <span class="result-label">최종 예상 공수</span>
+              <strong id="totalDays">0 M/D</strong>
+              <p id="resultNote">수정 화면에서 항목을 조정한 뒤 최종 산출물을 생성하세요.</p>
+            </section>
+            <section class="action-card">
+              <button id="copyMailButton" type="button">메일 문구 복사</button>
+              <button id="downloadMailButton" type="button">메일 문구 TXT</button>
+              <button id="downloadWbsButton" type="button">WBS 엑셀</button>
+            </section>
+          </div>
+          <section class="editor-panel">
+            <h2>메일 첨부용 문구</h2>
+            <pre id="mailPreview" class="mail-preview"></pre>
+          </section>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

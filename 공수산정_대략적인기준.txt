@@ -1,0 +1,171 @@
+사전 확인 데이터들 
+작업구분 
+ : 신규 구성, 메이저 업그레이드, 대개체, 이기종 마이그레이션
+제품구분
+ : PostgreSQL, MongoDB, MySQL, MariaDB, Redis
+구성구분
+ : 공통 - Single
+   PostgreSQL - HA(공유 스토리지) , HA(Replication), HA + Auto Failover
+   MongoDB - ReplicaSet, Shard Cluster
+   MySQL - HA(공유 스토리지), HA(Replication), HA + Auto Failover 
+   Redis - Cluster, Sentinel 
+고객사 : 입력 받음 
+
+시나리오 
+1. 신규구성일 경우
+  공통으로 DEV, STG, PRD를 선택하게 해서 구성일수 곱하기 대수로 해야 함
+  1.1 Sinle 구성
+      제품 : PostgreSQL, MongoDB, MySQL, MariaDB, Redis 
+      공수 : 1 M/D
+	  내용 : 제품 설치 및 파라미터 세팅 
+  1.2 HA(공유 스토리지) 
+      제품 : PostgreSQL, MySQL, MariaDB 
+      공수 : 3 M/D 
+	  내용 : 제품 설치 및 파라미터 세팅 
+	       Failover 테스트 지원 
+  1.3 HA(Replication)
+      제품 : PostgreSQL, MySQL, MariaDB
+      공수 : 1 M/D
+      내용 : 제품 설치 및 파라미터 세팅
+	       Replication 구성
+  1.4 HA + Auto Failover 
+      제품 : PostgreSQL, MySQL, MariaDB
+      공수 : 3 M/D
+	  내용 : 제품 설치 및 파라미터 세팅
+           Replication 구성
+           Auto Failover 구성 및 Failover 테스트 
+  1.5 ReplicaSet
+      제품 : MongoDB
+	  공수 : 2 M/D
+	  내용 : 제품 설치 및 파라미터 세팅
+	       Replication 구성 및 Failover 테스트
+  1.6 Shard Cluster
+      제품 : MongoDB
+      공수 : 3 M/D
+      내용 : 제품 설치 및 파라미터 세팅
+	       ReplicaSet 구성, Config Database 구성, mongos 구성 
+  1.7 Cluster
+      제품 : Redis
+      공수 : 	3 M/D  
+      내용 : 제품 설치 및 파라미터 세팅
+           Cluster Set 구성 및 Failover 테스트 
+  1.8 Sentinel
+      제품 : Redis
+      공수 : 	3 M/D  
+      내용 : 제품 설치 및 파라미터 세팅
+           Sentinel 및 ReplicatSet 구성 및 Failover 테스트 
+
+2. 메이저 업그레이트 (동일서버)
+  DEV, STG, PRD 가 존재하는 기준으로 공수를 산정 함
+  2.1 Sinle 
+      제품 : PostgreSQL, MongoDB, MySQL, MariaDB, Redis
+      공수 : 5 M/D
+	  내용 : DEV 메이저 업그레이드 및 고객 문의 응대
+	       STG, PRD 메이저 업그레이드 진행 및 모니터링 지원
+		   메이저 업그레이드 이후 응대이 필요하지 않을 경우 DEV, STG, PRD각 1일 
+  2.2 HA(공유 스토리지) 
+      제품 : PostgreSQL, MySQL, MariaDB 
+      공수 : 5 M/D 
+	  내용 : DEV 메이저 업그레이드 및 고객 문의 응대
+	       STG, PRD 메이저 업그레이드 진행 및 모니터링 지원
+		   메이저 업그레이드 이후 응대이 필요하지 않을 경우 DEV, STG, PRD각 1일  
+  2.3 HA(Replication)
+      제품 : PostgreSQL, MySQL, MariaDB
+      공수 : 5 M/D
+      내용 : DEV 메이저 업그레이드 및 고객 문의 응대
+	       STG, PRD의 Primary 메이저 업그레이드 진행 후 Replication 재 구성 
+  2.4 HA + Auto Failover 
+      제품 : PostgreSQL, MySQL, MariaDB
+      공수 : 5 M/D
+	  내용 : DEV 메이저 업그레이드 및 고객 문의 응대
+	       STG, PRD의 Primary 메이저 업그레이드 진행 후 Replication 재 구성
+           AutoFailover 소프트웨어 점검
+  2.5 ReplicaSet
+      제품 : MongoDB
+	  공수 : 5 M/D
+	  내용 : DEV 메이저 업그레이드 및 고객 문의 응대
+	       STG, PRD 메이저 업그레이드 진행 
+  2.6 Shard Cluster
+      제품 : MongoDB
+      공수 : 5 M/D
+      내용 : DEV 메이저 업그레이드 및 고객 문의 응대
+	       STG, PRD Shard Cluster에 대한 업그레이드 진행.
+		   Mongos에 대한 업그레이드 진행
+  2.7 Cluster
+      제품 : Redis
+      공수 : 	3 M/D  
+      내용 : DEV 메이저 업그레이드 및 고객 문의 응대
+           STG, PRD 업그레이드 진행 
+  2.8 Sentinel
+      제품 : Redis
+      공수 : 	3 M/D  
+      내용 : DEV 메이저 업그레이드 및 고객 문의 응대
+           STG, PRD 업그레이드 진행    
+    
+3. 메이저 업그레이트 (대개체)
+   다운타임 유무에 따라서 CDC를 사용해야 함
+   DEV, STG, PRD 3개 존재를 기준으로 공수를 산정 함
+  3.1 Sinle 
+      제품 : PostgreSQL, MongoDB, MySQL, MariaDB, Redis
+      공수 : 5 M/D
+	  내용 : 신규 서버에 DEV, STG, PRD 구축 
+	       DEV 데이터 이관 후 기존 Application 테스트 시 고객 문의 응대
+		   STG, PRD 데이터 이관    
+  3.2 HA(공유 스토리지) 
+      제품 : PostgreSQL, MySQL, MariaDB 
+      공수 : 5 M/D 
+	  내용 : 신규 서버에 DEV, STG, PRD 구축 및 Failover 테스트
+	       DEV 데이터 이관 후 기존 Application 테스트 시 고객 문의 응대
+		   STG, PRD 데이터 이관
+  3.3 HA(Replication)
+      제품 : PostgreSQL, MySQL, MariaDB
+      공수 : 5 M/D
+      내용 : 신규 서버에 DEV, STG, PRD 구축
+	       DEV 데이터 이관 후 기존 Application 테스트 시 고객 문의 응대
+	       STG, PRD의 Primary 서버에 데이터 이관 후 Replication 재 구성 
+  3.4 HA + Auto Failover 
+      제품 : PostgreSQL, MySQL, MariaDB
+      공수 : 5 M/D
+	  내용 : 신규 서버에 DEV, STG, PRD 구축
+	       DEV 데이터 이관 후 기존 Application 테스트 시 고객 문의 응대
+	       STG, PRD의 Primary 메이저 업그레이드 진행 후 Replication 재 구성
+           AutoFailover 소프트웨어 점검
+  3.5 ReplicaSet
+      제품 : MongoDB
+	  공수 : 5 M/D
+	  내용 : 신규 서버에 DEV, STG, PRD 제품 설치
+	       DEV 데이터 이관 후 기존 Application 테스트 시 고객 문의 응대
+	       STG, PRD 데이터 이관 
+  3.6 Shard Cluster
+      제품 : MongoDB
+      공수 : 8 M/D
+      내용 : 신규 서버에 DEV, STG, PRD 제품 설치
+	       DEV 데이터 이관 후 기존 Application 테스트 시 고객 문의 응대
+	       STG, PRD Shard Cluster에 대한 데이터 이관
+  3.7 Cluster
+      제품 : Redis
+      공수 : 	3 M/D  
+      내용 : 신규 서버에 DEV, STG, PRD 제품 설치
+	       DEV 데이터 이관 후 고객 문의 응대
+           STG, PRD 데이터 이관
+  2.8 Sentinel
+      제품 : Redis
+      공수 : 	3 M/D  
+      내용 : 신규 서버에 DEV, STG, PRD 제품 설치
+	       DEV 데이터 이관 후 고객 문의 응대
+           STG, PRD 데이터 이관    
+
+4. 이기종 마이그레이션은 엑셀에 있던 내용 참조 
+   데이터 사이즈 , 다운타임 유무
+   Procedure, Function, Package , View 개수에 따라서 튜닝 공수 증가 (1일 각 1개 수정 기준) 
+   
+
+
+
+
+
+
+
+
+
+
