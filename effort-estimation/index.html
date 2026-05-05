@@ -11,30 +11,38 @@
     <section class="workspace">
       <header class="top-panel">
         <div class="brand-block">
-          <img class="brand-logo" src="./RockPlace_CI.jpg" alt="Rockplace">
+          <img class="brand-logo" src="./RockPlace_CI_transparent.png" alt="Rockplace">
         </div>
 
-        <div class="status-card">
-          <div class="status-row">
-            <span>진행 단계</span>
-            <strong id="stepLabel">입력</strong>
-          </div>
-          <div class="progress-track">
-            <div id="progressBar" class="progress-bar"></div>
-          </div>
+        <div class="status-card" data-stage="input" aria-label="진행 단계">
+          <ol class="progress-stepper">
+            <li data-progress-step="input">
+              <span class="step-dot"></span>
+              <span class="step-text">입력</span>
+            </li>
+            <li data-progress-step="review">
+              <span class="step-dot"></span>
+              <span class="step-text">검토</span>
+            </li>
+            <li data-progress-step="output">
+              <span class="step-dot"></span>
+              <span class="step-text">산출</span>
+            </li>
+          </ol>
         </div>
 
-        <div class="summary-card">
-          <h2>입력 요약</h2>
-          <dl id="summaryList"></dl>
+        <div class="new-estimate-card">
+          <button id="resetEstimateButton" class="reset-estimate-button" type="button">신규 공수 산정</button>
         </div>
+
+        <dl id="summaryList" hidden></dl>
       </header>
 
       <section class="main-panel">
         <nav class="tabs" aria-label="작업 단계">
-          <button class="tab is-active" data-view="chatView">1. 대화 입력</button>
-          <button class="tab" data-view="reviewView">2. 수정 검토</button>
-          <button class="tab" data-view="outputView">3. 최종 산출</button>
+          <button class="tab is-active" data-view="chatView">챗봇</button>
+          <button class="tab is-hidden" data-view="reviewView">공수 산정</button>
+          <button class="tab is-hidden" data-view="outputView">산출물 관리</button>
         </nav>
 
         <section id="chatView" class="view is-active">
@@ -50,10 +58,10 @@
           <section class="review-shell">
             <div class="review-toolbar">
               <div>
-                <h2>수정 검토</h2>
+                <h2>공수 산정</h2>
                 <p>공수 항목을 수정하면 WBS와 메일 초안이 함께 갱신됩니다.</p>
               </div>
-              <div class="review-tabs" role="tablist" aria-label="수정 항목">
+              <div class="review-tabs" role="tablist" aria-label="공수 산정 항목">
                 <button class="review-tab is-active" type="button" data-review-view="estimatePane">공수 항목</button>
                 <button class="review-tab" type="button" data-review-view="wbsPane">WBS 초안</button>
                 <button class="review-tab" type="button" data-review-view="mailPane">메일 문구</button>
@@ -138,24 +146,52 @@
         <section id="outputView" class="view">
           <div class="output-layout">
             <section class="result-card">
-              <span class="result-label">최종 예상 공수</span>
-              <strong id="totalDays">0 M/D</strong>
-              <p id="resultNote">수정 화면에서 항목을 조정한 뒤 최종 산출물을 생성하세요.</p>
-            </section>
-            <section class="action-card">
-              <button id="copyMailButton" type="button">메일 문구 복사</button>
-              <button id="downloadMailButton" type="button">메일 문구 TXT</button>
-              <button id="downloadWbsButton" type="button">WBS 엑셀</button>
+              <div>
+                <span class="result-label">최종 예상 공수</span>
+                <strong id="totalDays">0 M/D</strong>
+                <p id="resultNote">공수 산정 화면에서 항목을 조정한 뒤 최종 산출물을 생성하세요.</p>
+              </div>
+              <button id="downloadWbsButton" type="button">WBS 엑셀 저장</button>
             </section>
           </div>
           <section class="editor-panel">
-            <h2>메일 첨부용 문구</h2>
+            <div class="output-mail-heading">
+              <h2>메일 첨부용 문구</h2>
+              <button id="copyMailButton" class="icon-copy-button" type="button" aria-label="메일 문구 복사" title="메일 문구 복사">
+                <span aria-hidden="true"></span>
+              </button>
+              <span id="copyToast" class="copy-toast" role="status" aria-live="polite">클립보드에 복사되었습니다</span>
+            </div>
             <pre id="mailPreview" class="mail-preview"></pre>
           </section>
         </section>
       </section>
     </section>
   </main>
+
+  <div id="resetModal" class="modal-overlay" aria-hidden="true">
+    <section class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="resetModalTitle" aria-describedby="resetModalDesc">
+      <span class="modal-kicker">신규 공수 산정</span>
+      <h2 id="resetModalTitle">현재 산정 내용을 초기화할까요?</h2>
+      <p id="resetModalDesc">입력한 답변, 공수 항목, WBS, 메일 문구가 모두 비워집니다.</p>
+      <div class="modal-actions">
+        <button id="cancelResetButton" class="modal-secondary" type="button">취소</button>
+        <button id="confirmResetButton" class="modal-primary" type="button">초기화</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="estimatingModal" class="modal-overlay estimating-overlay" aria-hidden="true">
+    <section class="estimating-modal" role="status" aria-live="polite">
+      <div class="estimate-orbit" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <h2>공수 산정 중입니다</h2>
+      <p>입력 내용을 기준으로 공수, WBS, 메일 문구를 정리하고 있습니다.</p>
+    </section>
+  </div>
 
   <script src="./app.js"></script>
 </body>

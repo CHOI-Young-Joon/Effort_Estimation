@@ -4,6 +4,7 @@ const state = {
   estimates: [],
   wbs: [],
   mailText: "",
+  reviewEditQuestionId: null,
 };
 
 const productConfigs = {
@@ -22,7 +23,7 @@ const labels = {
   customerName: "고객사",
   workType: "작업구분",
   product: "제품",
-  topology: "구성구분",
+  topology: "구성방법",
   environments: "대상 환경",
   envCounts: "환경별 대수",
   upgradeMode: "업그레이드 방식",
@@ -74,19 +75,25 @@ const questions = {
     next: "topology",
   },
   topology: {
-    text: "구성구분을 선택해주세요.",
+    text: "구성방법을 선택해주세요.",
     type: "choice",
     options: (a) => productConfigs[a.product] || ["Single"],
     next: (a) => a.workType === "메이저 업그레이드" ? "currentVersion" : "environments",
   },
   currentVersion: {
-    text: "현재 버전을 입력해주세요. 예: MongoDB 4.4",
+    text: (a) => `${a.product || "제품"}의 현재 버전을 입력해 주세요.\n예) 9.4`,
     type: "text",
+    placeholder: "예: 9.4",
+    inputMode: "decimal",
+    validation: "version",
     next: "targetVersion",
   },
   targetVersion: {
-    text: "목표 버전을 입력해주세요. 예: MongoDB 6.x",
+    text: (a) => `${a.product || "제품"}의 목표 버전을 입력해 주세요.\n예) 11.4`,
     type: "text",
+    placeholder: "예: 11.4",
+    inputMode: "decimal",
+    validation: "version",
     next: "environments",
   },
   environments: {
@@ -133,8 +140,10 @@ const questions = {
     next: "dataSize",
   },
   dataSize: {
-    text: "대상 데이터 규모를 입력해주세요. 예: 30GB, 1.2TB",
+    text: "대상 데이터 규모를 테라 단위로 입력해주세요. 예: 0.03 (30G), 1.2 (1.2T)",
     type: "text",
+    inputType: "number",
+    placeholder: "예: 0.03",
     next: "objectCounts",
   },
   objectCounts: {
@@ -191,12 +200,18 @@ const el = {
   wbsRows: document.getElementById("wbsRows"),
   mailEditor: document.getElementById("mailEditor"),
   mailPreview: document.getElementById("mailPreview"),
+  copyToast: document.getElementById("copyToast"),
   totalDays: document.getElementById("totalDays"),
   resultNote: document.getElementById("resultNote"),
-  stepLabel: document.getElementById("stepLabel"),
-  progressBar: document.getElementById("progressBar"),
+  statusCard: document.querySelector(".status-card"),
+  progressSteps: [...document.querySelectorAll("[data-progress-step]")],
   wbsStartDate: document.getElementById("wbsStartDate"),
   wbsPreviewTitle: document.getElementById("wbsPreviewTitle"),
+  resetEstimateButton: document.getElementById("resetEstimateButton"),
+  resetModal: document.getElementById("resetModal"),
+  cancelResetButton: document.getElementById("cancelResetButton"),
+  confirmResetButton: document.getElementById("confirmResetButton"),
+  estimatingModal: document.getElementById("estimatingModal"),
 };
 
 function addMessage(role, text) {
@@ -216,8 +231,17 @@ function addMessage(role, text) {
   `;
   node.querySelector(".message-text").textContent = text;
   el.chatLog.appendChild(node);
-  el.chatLog.scrollTop = el.chatLog.scrollHeight;
+  scrollChatToBottom();
   return node.querySelector(".message-controls");
+}
+
+function scrollChatToBottom() {
+  requestAnimationFrame(() => {
+    el.chatLog.scrollTop = el.chatLog.scrollHeight;
+    requestAnimationFrame(() => {
+      el.chatLog.scrollTop = el.chatLog.scrollHeight;
+    });
+  });
 }
 
 function getQuestion(id) {
@@ -228,14 +252,20 @@ function ask(id) {
   state.currentQuestionId = id;
   const q = getQuestion(id);
   if (!q) return;
-  const bubble = addMessage("bot", q.text);
-  renderInput(q, bubble);
+  const text = typeof q.text === "function" ? q.text(state.answers) : q.text;
+  const bubble = addMessage("bot", text);
+  renderInput(q, bubble, id);
   updateChrome();
+  scrollChatToBottom();
 }
 
-function renderInput(q, target = el.choiceArea) {
+function renderInput(q, target = el.choiceArea, questionId = state.currentQuestionId) {
   el.choiceArea.innerHTML = "";
   el.freeTextInput.value = "";
+  el.freeTextInput.type = "text";
+  el.freeTextInput.min = "";
+  el.freeTextInput.step = "";
+  el.freeTextInput.inputMode = "";
   const messageNode = target.closest?.(".message");
   messageNode?.classList.toggle("has-controls", q.type !== "text");
 
@@ -268,7 +298,7 @@ function renderInput(q, target = el.choiceArea) {
         const countInput = group.querySelector(`[data-env-count="${env}"]`);
         counts[env] = Math.max(1, Number(countInput?.value || 1));
       });
-      handleAnswer({ environments: selected, envCounts: counts });
+      handleAnswer({ environments: selected, envCounts: counts }, questionId);
     });
     target.appendChild(group);
     target.appendChild(button);
@@ -302,7 +332,7 @@ function renderInput(q, target = el.choiceArea) {
       group.querySelectorAll("input").forEach((input) => {
         counts[input.dataset.objectCount] = Math.max(0, Number(input.value || 0));
       });
-      handleAnswer({ objectCounts: counts });
+      handleAnswer({ objectCounts: counts }, questionId);
     });
     target.appendChild(group);
     target.appendChild(button);
@@ -314,21 +344,38 @@ function renderInput(q, target = el.choiceArea) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = option;
-      button.addEventListener("click", () => handleAnswer(option));
+      button.addEventListener("click", () => handleAnswer(option, questionId));
       target.appendChild(button);
     });
     el.freeTextInput.disabled = true;
     el.freeTextInput.placeholder = "아래 선택지를 고르세요";
   } else {
+    const placeholder = typeof q.placeholder === "function" ? q.placeholder(state.answers) : q.placeholder;
     el.freeTextInput.disabled = false;
-    el.freeTextInput.placeholder = "답변을 입력하세요";
+    el.freeTextInput.type = q.inputType || "text";
+    el.freeTextInput.min = q.inputType === "number" ? "0" : "";
+    el.freeTextInput.step = q.inputType === "number" ? "0.01" : "";
+    el.freeTextInput.inputMode = q.inputMode || (q.inputType === "number" ? "decimal" : "");
+    el.freeTextInput.placeholder = placeholder || "답변을 입력하세요";
     el.freeTextInput.focus();
   }
+  scrollChatToBottom();
 }
 
-function handleAnswer(value) {
-  const q = getQuestion(state.currentQuestionId);
-  const key = q.saveAs || state.currentQuestionId;
+function handleAnswer(value, questionId = state.currentQuestionId) {
+  if (questionId !== state.currentQuestionId) {
+    addMessage("bot", "이전 질문의 선택지는 사용할 수 없습니다. 현재 질문에 답변해주세요.");
+    scrollChatToBottom();
+    return;
+  }
+  const q = getQuestion(questionId);
+  const validation = validateAnswer(q, value);
+  if (!validation.ok) {
+    addMessage("bot", validation.message);
+    scrollChatToBottom();
+    return;
+  }
+  const key = q.saveAs || questionId;
   const cleanValue = normalizeAnswer(value);
   if (cleanValue && typeof cleanValue === "object" && cleanValue.environments && cleanValue.envCounts) {
     state.answers.environments = cleanValue.environments;
@@ -338,21 +385,190 @@ function handleAnswer(value) {
   } else {
     state.answers[key] = cleanValue;
   }
-  addMessage("user", formatAnswer(cleanValue));
+  addMessage("user", formatAnswerForKey(key, cleanValue));
   updateSummary();
+
+  if (state.reviewEditQuestionId === questionId) {
+    state.reviewEditQuestionId = null;
+    showAnswerReview();
+    scrollChatToBottom();
+    return;
+  }
 
   const next = typeof q.next === "function" ? q.next(state.answers) : q.next;
   if (next === "finish") {
-    finishEstimate();
+    showAnswerReview();
   } else {
     ask(next);
   }
+  scrollChatToBottom();
 }
 
 function normalizeAnswer(value) {
   if (Array.isArray(value)) return value;
   if (value && typeof value === "object") return value;
   return value.trim() || "미정";
+}
+
+function validateAnswer(q, value) {
+  if (!q) return { ok: false, message: "현재 질문을 확인할 수 없습니다. 다시 입력해주세요." };
+  if (q.type === "envCheckbox") {
+    const valid = value && typeof value === "object" && Array.isArray(value.environments) && value.environments.length > 0 && value.envCounts;
+    return valid
+      ? { ok: true }
+      : { ok: false, message: "대상 환경을 최소 하나 이상 체크한 뒤 대수를 입력해주세요." };
+  }
+  if (q.type === "objectCounts") {
+    const valid = value && typeof value === "object" && value.objectCounts;
+    return valid
+      ? { ok: true }
+      : { ok: false, message: "Object 수 입력 영역에서 값을 확인한 뒤 완료 버튼을 눌러주세요." };
+  }
+  if (q.type === "choice") {
+    const options = typeof q.options === "function" ? q.options(state.answers) : q.options;
+    return options.includes(value)
+      ? { ok: true }
+      : { ok: false, message: "현재 질문의 선택지 중 하나를 선택해주세요." };
+  }
+  if (q.inputType === "number") {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0
+      ? { ok: true }
+      : { ok: false, message: "숫자만 입력해주세요. 예: 0.03, 1.2, 5" };
+  }
+  if (q.validation === "version") {
+    const version = String(value || "").trim();
+    return /^\d+(?:\.\d+){0,3}$/.test(version)
+      ? { ok: true }
+      : { ok: false, message: "버전은 숫자와 점(.)만 입력해주세요. 예: 9.4, 11.4" };
+  }
+  return String(value || "").trim()
+    ? { ok: true }
+    : { ok: false, message: "값을 입력한 뒤 진행해주세요." };
+}
+
+function reviewFlowIds() {
+  const a = state.answers;
+  if (a.workType === "이기종 마이그레이션") {
+    return [
+      "customerName",
+      "workType",
+      "sourceDb",
+      "targetDb",
+      "environmentsMigration",
+      "dataSize",
+      "objectCounts",
+      "downtime",
+      "cdcRequired",
+      "migrationRounds",
+      "includeAppSupportMigration",
+      "sqlChangeSupport",
+      "openSupport",
+    ];
+  }
+  const ids = ["customerName", "workType", "product"];
+  if (a.workType === "메이저 업그레이드") ids.push("upgradeMode");
+  ids.push("topology");
+  if (a.workType === "메이저 업그레이드") ids.push("currentVersion", "targetVersion");
+  ids.push("environments");
+  if (a.workType === "대개체") ids.push("includeMigration");
+  ids.push("includeAppSupport", "includeMonitoring");
+  return ids;
+}
+
+function answerReviewItems() {
+  return reviewFlowIds().map((questionId) => {
+    const q = getQuestion(questionId);
+    const key = q.saveAs || questionId;
+    if (questionId === "objectCounts") {
+      return { questionId, label: "Object 수", value: formatAnswer({ objectCounts: collectObjectCounts() }) };
+    }
+    if (key === "environments") {
+      return { questionId, label: labels.environments, value: formatAnswer({ environments: state.answers.environments || [], envCounts: state.answers.envCounts || {} }) };
+    }
+    return { questionId, label: labels[key] || q.text, value: formatAnswerForKey(key, state.answers[key]) };
+  }).filter((item) => item.value && item.value !== "undefined");
+}
+
+function collectObjectCounts() {
+  return {
+    tableCount: state.answers.tableCount || 0,
+    indexCount: state.answers.indexCount || 0,
+    viewCount: state.answers.viewCount || 0,
+    procedureCount: state.answers.procedureCount || 0,
+    functionCount: state.answers.functionCount || 0,
+    packageCount: state.answers.packageCount || 0,
+    lobCount: state.answers.lobCount || 0,
+    triggerCount: state.answers.triggerCount || 0,
+  };
+}
+
+function showAnswerReview() {
+  state.currentQuestionId = "answerReview";
+  const items = answerReviewItems();
+  const summary = items.map((item, index) => `${index + 1}. ${item.label}: ${item.value}`).join("\n");
+  const controls = addMessage("bot", `입력 내용을 확인해주세요.\n\n${summary}\n\n수정할 항목 번호를 선택하거나, 문제가 없으면 공수 산정을 시작해주세요.`);
+  const numberWrap = document.createElement("div");
+  numberWrap.className = "review-number-grid";
+  items.forEach((item, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = `${index + 1}`;
+    button.title = `${item.label} 수정`;
+    button.addEventListener("click", () => editAnswerFrom(item.questionId));
+    numberWrap.appendChild(button);
+  });
+  controls.appendChild(numberWrap);
+
+  const restartButton = document.createElement("button");
+  restartButton.type = "button";
+  restartButton.textContent = "전체 다시 입력";
+  restartButton.addEventListener("click", resetEstimate);
+
+  const startButton = document.createElement("button");
+  startButton.type = "button";
+  startButton.className = "control-submit";
+  startButton.textContent = "공수 산정 시작";
+  startButton.addEventListener("click", startEstimateWithAnimation);
+
+  controls.appendChild(restartButton);
+  controls.appendChild(startButton);
+  el.freeTextInput.disabled = true;
+  el.freeTextInput.placeholder = "입력 내용을 확인해주세요";
+  updateChrome();
+  scrollChatToBottom();
+}
+
+function editAnswerFrom(questionId) {
+  state.reviewEditQuestionId = questionId;
+  hideEstimateTabs();
+  state.estimates = [];
+  state.wbs = [];
+  state.mailText = "";
+  el.mailEditor.value = "";
+  updateSummary();
+  addMessage("bot", "선택한 항목만 다시 입력하겠습니다. 수정 후 요약 화면으로 돌아갑니다.");
+  ask(questionId);
+}
+
+function clearAnswersFrom(questionId) {
+  const ids = reviewFlowIds();
+  const index = ids.indexOf(questionId);
+  const targets = index >= 0 ? ids.slice(index) : [questionId];
+  targets.forEach((id) => {
+    const q = getQuestion(id);
+    const key = q?.saveAs || id;
+    if (key === "environments") {
+      delete state.answers.environments;
+      delete state.answers.envCounts;
+      return;
+    }
+    if (id === "objectCounts") {
+      ["tableCount", "indexCount", "viewCount", "procedureCount", "functionCount", "packageCount", "lobCount", "triggerCount"].forEach((countKey) => delete state.answers[countKey]);
+      return;
+    }
+    delete state.answers[key];
+  });
 }
 
 function formatAnswer(value) {
@@ -379,6 +595,11 @@ function formatAnswer(value) {
   return value;
 }
 
+function formatAnswerForKey(key, value) {
+  if (key === "dataSize") return dataSizeLabel(value);
+  return formatAnswer(value);
+}
+
 function finishEstimate() {
   calculateEstimate();
   state.mailText = buildMailText();
@@ -387,8 +608,17 @@ function finishEstimate() {
   renderEstimateRows();
   renderWbsRows();
   updateOutput();
-  addMessage("bot", "산정 초안을 만들었습니다. 이제 '수정 검토' 탭에서 공수와 문구, WBS 항목을 조정한 뒤 최종 산출물을 생성할 수 있습니다.");
+  revealEstimateTabs();
+  addMessage("bot", "산정 초안을 만들었습니다. 공수 산정 탭에서 상세 항목을 검토해주세요.");
   switchView("reviewView");
+}
+
+function startEstimateWithAnimation() {
+  openEstimatingModal();
+  window.setTimeout(() => {
+    finishEstimate();
+    closeEstimatingModal();
+  }, 2000);
 }
 
 function syncDerivedFromEstimates() {
@@ -423,8 +653,26 @@ function envSummary() {
 }
 
 function parseNumber(value) {
-  const match = String(value || "").replace(/,/g, "").match(/\d+/);
+  const match = String(value || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/);
   return match ? Number(match[0]) : 0;
+}
+
+function dataSizeMultiplier() {
+  const sizeTb = parseNumber(state.answers.dataSize);
+  if (sizeTb >= 5) return 2;
+  if (sizeTb >= 1) return 1.5;
+  return 1;
+}
+
+function dataSizeWeightNote(weight) {
+  if (weight === 2) return "데이터 규모 5T 이상 가중치 2배";
+  if (weight === 1.5) return "데이터 규모 1T 이상 5T 미만 가중치 1.5배";
+  return "";
+}
+
+function dataSizeLabel(value = state.answers.dataSize) {
+  const sizeTb = parseNumber(value);
+  return `${sizeTb}T`;
 }
 
 function calculateEstimate() {
@@ -499,7 +747,7 @@ function replacementTasks(product, topology, env, includeMigration) {
 function versionLabel() {
   const current = state.answers.currentVersion || "현재 버전";
   const target = state.answers.targetVersion || "목표 버전";
-  return `${current} -> ${target}`;
+  return `${current} → ${target}`;
 }
 
 function upgradeTasks(product, topology, env, upgradeMode) {
@@ -580,51 +828,71 @@ function replacementEstimate() {
 
 function migrationEstimate() {
   const a = state.answers;
-  const rounds = a.migrationRounds === "1회" ? 1 : a.migrationRounds === "2회" ? 2 : 3;
   const sqlObjects = ["viewCount", "procedureCount", "functionCount", "packageCount", "triggerCount"]
     .reduce((sum, key) => sum + parseNumber(a[key]), 0);
+  const envs = environmentCounts();
+  const hasPrd = envs.some(({ env }) => env === "PRD");
+  const refreshTargets = envs.filter(({ env }) => env === "DEV" || env === "STG");
+  const useCdc = a.cdcRequired === "예" || a.downtime === "불가능";
+  const sizeWeight = dataSizeMultiplier();
   const estimates = [
-    { phase: "1. AS-IS 분석 및 환경 설정", task: "AS-IS 시스템 분석 및 마이그레이션 환경 설정", days: 5, note: "공수산정베이스 기준" },
+    { phase: "1. AS-IS 분석 및 환경 설정", task: "AS-IS 시스템 분석 및 마이그레이션 환경 설정", days: 5, note: "" },
   ];
 
-  environmentCounts().forEach(({ env, count }) => {
-    estimates.push({ phase: "2. TO-BE 시스템 구축", task: `[${env}] ${a.targetDb} 제품 설치`, days: count, note: `${env} ${count}대 기준` });
-    estimates.push({ phase: "2. TO-BE 시스템 구축", task: `[${env}] 파라미터 세팅 및 기본 구성`, days: count, note: `${env} ${count}대 기준` });
-    estimates.push({ phase: "3. 마이그레이션 준비", task: `[${env}] MTK/Xlog 등 마이그레이션 도구 설치 및 환경 설정`, days: count, note: `${env} ${count}대 기준` });
-    estimates.push({ phase: "4. Object 전환 및 검증 준비", task: `[${env}] DDL 추출, Object 변환, TO-BE Object 구성`, days: 2 * count, note: "Object 변환 작업" });
-    estimates.push({ phase: "4. Object 전환 및 검증 준비", task: `[${env}] Object Count 및 Table Row Count 검증 스크립트 작성`, days: count, note: "검증 스크립트" });
-    estimates.push({
-      phase: "5. 테스트 데이터 마이그레이션",
-      task: `[${env}] ${rounds}회 테스트 데이터 마이그레이션`,
-      days: (rounds === 1 ? 3 : rounds === 2 ? 6 : 9) * count,
-      note: `데이터 규모 ${a.dataSize}, ${env} ${count}대 기준`,
-    });
-    estimates.push({ phase: "5. 테스트 데이터 마이그레이션", task: `[${env}] 이관 데이터 검증 및 이슈 정리`, days: 2 * count, note: "Object Count, Row Count 검증" });
+  envs.forEach(({ env, count }) => {
+    estimates.push({ phase: "2. TO-BE 시스템 구축", task: `[${env}] ${a.targetDb} 제품 설치`, days: 1 * count, note: "" });
+    estimates.push({ phase: "2. TO-BE 시스템 구축", task: `[${env}] 파라미터 세팅 및 구성`, days: 1 * count, note: "" });
+    estimates.push({ phase: "3. 마이그레이션 준비", task: `[${env}] 마이그레이션 도구 설치 및 환경 설정`, days: 3 * count, note: "" });
+    estimates.push({ phase: "4. Object 전환 및 검증 준비", task: `[${env}] DDL 추출 및 TO-BE 시스템에 맞게 Object 변환`, days: 3 * count, note: "" });
+    estimates.push({ phase: "4. Object 전환 및 검증 준비", task: `[${env}] TO-BE Object 구성`, days: 2 * count, note: "" });
   });
 
-  if (a.cdcRequired === "예" || a.downtime === "불가능") {
-    environmentCounts().forEach(({ env, count }) => {
-      estimates.push({ phase: "6. CDC 구성", task: `[${env}] CDC 기반 데이터 동기화 구성 및 검증`, days: 2 * count, note: "다운타임 불가 또는 CDC 필요" });
+  if (a.sqlChangeSupport === "예") {
+    const sqlDays = Math.max(sqlObjects, 1);
+    const sqlNote = sqlObjects > 0 ? "객체 1개당 1 M/D" : "SQL 변경 지원 기본 공수";
+    estimates.push({ phase: "5. SQL 변경 지원", task: "View, Procedure, Function, Package, Trigger 변경 지원", days: sqlDays, note: sqlNote });
+  }
+
+  if (useCdc) {
+    estimates.push({ phase: "6. CDC 구성", task: "초기 적재 및 데이터 동기화 진행", days: 5 * sizeWeight, note: dataSizeWeightNote(sizeWeight) });
+  } else {
+    estimates.push({ phase: "6. 테스트 데이터 마이그레이션", task: "1차 테스트 데이터 마이그레이션", days: 2 * sizeWeight, note: dataSizeWeightNote(sizeWeight) });
+    estimates.push({ phase: "6. 테스트 데이터 마이그레이션", task: "1차 이관 스크립트 검증 및 데이터 검증", days: 2, note: "" });
+    estimates.push({ phase: "6. 테스트 데이터 마이그레이션", task: "2차 테스트 데이터 마이그레이션", days: 2 * sizeWeight, note: dataSizeWeightNote(sizeWeight) });
+    estimates.push({ phase: "6. 테스트 데이터 마이그레이션", task: "2차 이관 스크립트 검증 및 데이터 검증", days: 2, note: "" });
+  }
+
+  if (a.includeAppSupport === "예" && hasPrd) {
+    estimates.push({ phase: "7. 단위/통합 테스트 지원", task: "[PRD] 단위/통합 테스트 지원 및 문의 응대, 모니터링", days: 20, note: "PRD만 해당" });
+  }
+
+  if (a.openSupport === "예" && hasPrd) {
+    const openTask = useCdc
+      ? "[PRD] CDC 동기화 종료, CutOver, 데이터 검증, 오픈 모니터링"
+      : "[PRD] Cutover, 데이터 마이그레이션, 데이터 검증, 오픈 모니터링";
+    estimates.push({ phase: "8. 오픈 지원", task: openTask, days: 5, note: "PRD만 해당" });
+  }
+
+  if (refreshTargets.length > 0) {
+    refreshTargets.forEach(({ env }) => {
+      estimates.push({ phase: "9. 데이터 현행화", task: `[${env}] Object 및 데이터 현행화`, days: 2, note: `${env}만 해당` });
     });
   }
 
-  if (a.includeAppSupport === "예") {
-    environmentCounts().forEach(({ env }) => {
-      estimates.push({ phase: "7. 단위/통합 테스트 지원", task: `[${env}] 단위/통합 테스트 지원, 문의 응대, 모니터링`, days: env === "DEV" ? 5 : 3, note: "고객 일정에 따라 조정" });
-    });
-  }
+  return normalizeMigrationPhases(estimates);
+}
 
-  if (a.sqlChangeSupport === "예" && sqlObjects > 0) {
-    estimates.push({ phase: "8. SQL 변경", task: "View, Procedure, Function, Package, Trigger 변경 지원", days: sqlObjects, note: "객체 1개당 1 M/D" });
-  }
-
-  if (a.openSupport === "예") {
-    environmentCounts().forEach(({ env, count }) => {
-      estimates.push({ phase: "9. 본 마이그레이션 및 오픈", task: `[${env}] Cutover, 본 마이그레이션, 데이터 검증, 오픈 모니터링`, days: env === "PRD" ? 5 * count : count, note: `${env} ${count}대 기준` });
-    });
-  }
-
-  return estimates;
+function normalizeMigrationPhases(estimates) {
+  const phaseNumbers = new Map();
+  let nextNumber = 1;
+  return estimates.map((item) => {
+    const title = String(item.phase || "").replace(/^\s*\d+\.\s*/, "").trim();
+    if (!phaseNumbers.has(title)) {
+      phaseNumbers.set(title, nextNumber);
+      nextNumber += 1;
+    }
+    return { ...item, phase: `${phaseNumbers.get(title)}. ${title}` };
+  });
 }
 
 function generalWbs() {
@@ -652,7 +920,7 @@ function migrationWbs() {
   return generalWbs().map((row) => ({
     ...row,
     owner: "락플레이스",
-    note: `${state.answers.sourceDb} -> ${state.answers.targetDb}, ${row.note}`,
+    note: `${state.answers.sourceDb} → ${state.answers.targetDb}, ${row.note}`,
   }));
 }
 
@@ -661,7 +929,7 @@ function buildMailText() {
   const total = sumDays();
   const lines = buildGroupedEstimateText();
   const migrationInfo = a.workType === "이기종 마이그레이션"
-    ? `\n[마이그레이션 대상]\n- Source/Target: ${a.sourceDb} -> ${a.targetDb}\n- 대상 환경/대수: ${envSummary()}\n- 데이터 규모: ${a.dataSize}\n- Table/Index/LOB: ${a.tableCount || 0}/${a.indexCount || 0}/${a.lobCount || 0}\n- SQL 변경 대상: View ${a.viewCount || 0}, Procedure ${a.procedureCount || 0}, Function ${a.functionCount || 0}, Package ${a.packageCount || 0}, Trigger ${a.triggerCount || 0}\n- 다운타임/CDC: ${a.downtime} / ${a.cdcRequired}\n`
+    ? `\n[마이그레이션 대상]\n- Source/Target: ${a.sourceDb} → ${a.targetDb}\n- 대상 환경/대수: ${envSummary()}\n- 데이터 규모: ${dataSizeLabel()}\n- Table/Index/LOB: ${a.tableCount || 0}/${a.indexCount || 0}/${a.lobCount || 0}\n- SQL 변경 대상: View ${a.viewCount || 0}, Procedure ${a.procedureCount || 0}, Function ${a.functionCount || 0}, Package ${a.packageCount || 0}, Trigger ${a.triggerCount || 0}\n- 다운타임/CDC: ${a.downtime} / ${a.cdcRequired}\n`
     : `\n[대상 구성]\n- 제품/구성: ${a.product} / ${a.topology}${a.workType === "메이저 업그레이드" ? `\n- 업그레이드 버전: ${versionLabel()}` : ""}\n- 대상 환경/대수: ${envSummary()}\n`;
 
   return `안녕하세요.\n\n${a.customerName} 관련 공수 산정 초안 전달드립니다.\n\n[산정 요약]\n- 작업 구분: ${a.workType}\n- 총 예상 공수: ${total} M/D\n${migrationInfo}\n[상세 공수]\n${lines}\n\n상기 공수는 현재 제공된 정보를 기준으로 산정한 초안이며, 실제 일정, 접속 환경, 데이터 이관 속도, 테스트 범위, 고객 문의 대응 범위에 따라 조정될 수 있습니다.\n\n감사합니다.`;
@@ -728,7 +996,7 @@ function renderEstimateRows() {
       tr.className = "estimate-detail-row";
       tr.innerHTML = `
         <td class="estimate-sequence">${itemIndex + 1}</td>
-        <td><textarea data-estimate="${item.index}" data-field="task">${escapeHtml(item.task)}</textarea></td>
+        <td><textarea rows="1" placeholder="작업 내용을 입력하세요" data-estimate="${item.index}" data-field="task">${escapeHtml(item.task)}</textarea></td>
         <td><input type="number" step="0.5" min="0" value="${item.days}" data-estimate="${item.index}" data-field="days"></td>
         <td class="row-actions">
           <button class="row-action-button" type="button" data-insert-after="${item.index}">+</button>
@@ -762,7 +1030,7 @@ function renderWbsRows() {
   groupedWbsForExcel().forEach((group) => {
     const groupRow = document.createElement("tr");
     groupRow.className = "wbs-group-row";
-    groupRow.innerHTML = `<td colspan="8">${escapeHtml(group.env)}</td>`;
+    groupRow.innerHTML = `<td colspan="8">${escapeHtml(group.groupTitle)}</td>`;
     el.wbsRows.appendChild(groupRow);
 
     group.rows.forEach((item, groupIndex) => {
@@ -770,7 +1038,7 @@ function renderWbsRows() {
     tr.className = "wbs-detail-row";
     tr.innerHTML = `
       <td class="wbs-sequence">${groupIndex + 1}</td>
-      <td><textarea data-wbs="${item.index}" data-field="activity">${escapeHtml(item.activity)}</textarea></td>
+      <td><textarea rows="1" placeholder="작업 내용을 입력하세요" data-wbs="${item.index}" data-field="activity">${escapeHtml(item.activity)}</textarea></td>
       <td><input type="date" value="${item.start}" data-wbs="${item.index}" data-field="start"></td>
       <td><input type="date" value="${item.end}" data-wbs="${item.index}" data-field="end"></td>
       <td><input type="number" step="0.5" min="0" value="${item.duration}" data-wbs="${item.index}" data-field="duration"></td>
@@ -788,7 +1056,7 @@ function updateSummary() {
   Object.entries(labels).forEach(([key, label]) => {
     if (!state.answers[key]) return;
     const row = document.createElement("div");
-    row.innerHTML = `<dt>${label}</dt><dd>${escapeHtml(formatAnswer(state.answers[key]))}</dd>`;
+    row.innerHTML = `<dt>${label}</dt><dd>${escapeHtml(formatAnswerForKey(key, state.answers[key]))}</dd>`;
     el.summaryList.appendChild(row);
   });
 }
@@ -802,18 +1070,91 @@ function updateOutput() {
 }
 
 function updateChrome() {
-  const answered = Object.keys(state.answers).length;
-  const done = state.estimates.length > 0;
-  el.stepLabel.textContent = done ? "검토/산출" : "입력";
-  el.progressBar.style.width = done ? "100%" : `${Math.min(88, 12 + answered * 6)}%`;
+  const activeView = document.querySelector(".view.is-active")?.id;
+  const stage = activeView === "outputView" ? "output" : state.estimates.length > 0 ? "review" : "input";
+  const order = ["input", "review", "output"];
+  const activeIndex = order.indexOf(stage);
+  el.statusCard?.setAttribute("data-stage", stage);
+  el.progressSteps.forEach((step) => {
+    const stepIndex = order.indexOf(step.dataset.progressStep);
+    step.classList.toggle("is-active", stepIndex === activeIndex);
+    step.classList.toggle("is-complete", stepIndex < activeIndex);
+  });
 }
 
 function switchView(viewId) {
+  if ((viewId === "reviewView" || viewId === "outputView") && state.estimates.length === 0) return;
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("is-active", view.id === viewId));
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("is-active", tab.dataset.view === viewId));
   if (viewId === "outputView") {
     updateOutput();
   }
+  updateChrome();
+}
+
+function revealEstimateTabs() {
+  document.querySelectorAll('[data-view="reviewView"], [data-view="outputView"]').forEach((tab) => tab.classList.remove("is-hidden"));
+}
+
+function hideEstimateTabs() {
+  document.querySelectorAll('[data-view="reviewView"], [data-view="outputView"]').forEach((tab) => tab.classList.add("is-hidden"));
+}
+
+function resetEstimate() {
+  state.answers = {};
+  state.currentQuestionId = "customerName";
+  state.estimates = [];
+  state.wbs = [];
+  state.mailText = "";
+  state.reviewEditQuestionId = null;
+  el.chatLog.innerHTML = "";
+  el.choiceArea.innerHTML = "";
+  el.freeTextInput.value = "";
+  el.freeTextInput.disabled = false;
+  el.freeTextInput.type = "text";
+  el.freeTextInput.min = "";
+  el.freeTextInput.step = "";
+  el.freeTextInput.inputMode = "";
+  el.freeTextInput.placeholder = "답변을 입력하세요";
+  el.summaryList.innerHTML = "";
+  el.estimateRows.innerHTML = "";
+  el.wbsRows.innerHTML = "";
+  if (el.wbsPreviewTitle) el.wbsPreviewTitle.textContent = "";
+  if (el.wbsStartDate) el.wbsStartDate.value = "";
+  el.mailEditor.value = "";
+  el.mailPreview.textContent = "";
+  el.totalDays.textContent = "0 M/D";
+  el.resultNote.textContent = "공수 산정 화면에서 항목을 조정한 뒤 최종 산출물을 생성하세요.";
+  hideEstimateTabs();
+  updateChrome();
+  switchView("chatView");
+  ask("customerName");
+}
+
+function openResetModal() {
+  if (!el.resetModal) return;
+  el.resetModal.classList.add("is-open");
+  el.resetModal.setAttribute("aria-hidden", "false");
+  el.confirmResetButton?.focus();
+}
+
+function closeResetModal() {
+  if (!el.resetModal) return;
+  el.resetModal.classList.remove("is-open");
+  el.resetModal.setAttribute("aria-hidden", "true");
+  el.resetEstimateButton?.focus();
+}
+
+function openEstimatingModal() {
+  if (!el.estimatingModal) return;
+  el.estimatingModal.classList.add("is-open");
+  el.estimatingModal.setAttribute("aria-hidden", "false");
+}
+
+function closeEstimatingModal() {
+  if (!el.estimatingModal) return;
+  el.estimatingModal.classList.remove("is-open");
+  el.estimatingModal.setAttribute("aria-hidden", "true");
 }
 
 function addDays(date, days) {
@@ -889,10 +1230,37 @@ function downloadBlob(filename, blob) {
   URL.revokeObjectURL(url);
 }
 
+async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (error) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    return copied;
+  }
+}
+
+function showCopyToast(message = "클립보드에 복사되었습니다") {
+  if (!el.copyToast) return;
+  el.copyToast.textContent = message;
+  el.copyToast.classList.add("is-visible");
+  window.setTimeout(() => el.copyToast?.classList.remove("is-visible"), 1800);
+}
+
 function excelTitle() {
   const a = state.answers;
   if (a.workType === "이기종 마이그레이션") {
-    return `WBS - ${a.customerName || ""} (${a.sourceDb || ""} -> ${a.targetDb || ""} 이기종 마이그레이션)`;
+    return `WBS - ${a.customerName || ""} (${a.sourceDb || ""} → ${a.targetDb || ""} 이기종 마이그레이션)`;
   }
   const detail = [a.product, a.topology, a.workType].filter(Boolean).join(" / ");
   return `WBS - ${a.customerName || ""}${detail ? ` (${detail})` : ""}`;
@@ -917,19 +1285,22 @@ function wbsFileName() {
 
 function wbsPhaseParts(phase) {
   const text = String(phase || "").replace(/^\s*\d+\.\s*/, "").trim();
+  if (state.answers.workType === "이기종 마이그레이션") {
+    return { groupTitle: text || "마이그레이션", label: text || "작업" };
+  }
   const envMatch = text.match(/^(DEV|STG|PRD)\s+(.+)$/);
-  if (envMatch) return { env: envMatch[1], label: envMatch[2] };
+  if (envMatch) return { groupTitle: envMatch[1], label: envMatch[2] };
   const bracketMatch = text.match(/\[(DEV|STG|PRD)\]/);
-  return { env: bracketMatch?.[1] || "공통", label: text.replace(/\[(DEV|STG|PRD)\]\s*/g, "") || "작업" };
+  return { groupTitle: bracketMatch?.[1] || "공통", label: text.replace(/\[(DEV|STG|PRD)\]\s*/g, "") || "작업" };
 }
 
 function groupedWbsForExcel() {
   const groups = [];
   state.wbs.forEach((row, index) => {
     const parts = wbsPhaseParts(row.phase);
-    let group = groups.find((item) => item.env === parts.env);
+    let group = groups.find((item) => item.groupTitle === parts.groupTitle);
     if (!group) {
-      group = { env: parts.env, rows: [] };
+      group = { groupTitle: parts.groupTitle, rows: [] };
       groups.push(group);
     }
     group.rows.push({ ...row, phaseLabel: parts.label, index });
@@ -978,7 +1349,7 @@ function wbsSheetXml() {
   rowIndex += 1;
 
   groupedWbsForExcel().forEach((group) => {
-    rows.push(`<row r="${rowIndex}">${excelCell(rowIndex, 1, group.env, 3)}</row>`);
+    rows.push(`<row r="${rowIndex}">${excelCell(rowIndex, 1, group.groupTitle, 3)}</row>`);
     merges.push(`A${rowIndex}:H${rowIndex}`);
     rowIndex += 1;
 
@@ -1173,7 +1544,7 @@ el.freeTextForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const q = getQuestion(state.currentQuestionId);
   if (!q || q.type !== "text") return;
-  handleAnswer(el.freeTextInput.value);
+  handleAnswer(el.freeTextInput.value, state.currentQuestionId);
 });
 
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -1192,7 +1563,7 @@ function insertEstimateAfter(index) {
   const insertAt = Number.isInteger(index) ? index + 1 : state.estimates.length;
   state.estimates.splice(insertAt, 0, {
     phase: source?.phase || "추가 항목",
-    task: "작업 내용을 입력하세요",
+    task: "",
     days: 0,
     note: state.answers.workType === "이기종 마이그레이션" ? source?.note || "" : "",
   });
@@ -1205,7 +1576,7 @@ document.getElementById("addLineButton").addEventListener("click", () => {
 });
 
 document.getElementById("addWbsButton").addEventListener("click", () => {
-  state.wbs.push({ phase: "추가 단계", activity: "작업 내용을 입력하세요", start: formatDate(new Date()), end: formatDate(new Date()), duration: 0, owner: "락플레이스", output: "", note: "" });
+  state.wbs.push({ phase: "추가 단계", activity: "", start: formatDate(new Date()), end: formatDate(new Date()), duration: 0, owner: "락플레이스", output: "", note: "" });
   renderWbsRows();
 });
 
@@ -1217,6 +1588,27 @@ document.getElementById("refreshMailButton").addEventListener("click", () => {
   state.mailText = buildMailText();
   el.mailEditor.value = state.mailText;
   updateOutput();
+});
+
+el.resetEstimateButton?.addEventListener("click", () => {
+  openResetModal();
+});
+
+el.cancelResetButton?.addEventListener("click", closeResetModal);
+
+el.confirmResetButton?.addEventListener("click", () => {
+  closeResetModal();
+  resetEstimate();
+});
+
+el.resetModal?.addEventListener("click", (event) => {
+  if (event.target === el.resetModal) closeResetModal();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && el.resetModal?.classList.contains("is-open")) {
+    closeResetModal();
+  }
 });
 
 el.estimateRows.addEventListener("input", (event) => {
@@ -1264,12 +1656,8 @@ el.mailEditor.addEventListener("input", updateOutput);
 
 document.getElementById("copyMailButton").addEventListener("click", async () => {
   updateOutput();
-  await navigator.clipboard.writeText(el.mailPreview.textContent);
-});
-
-document.getElementById("downloadMailButton").addEventListener("click", () => {
-  updateOutput();
-  download("effort-estimation-mail.txt", el.mailPreview.textContent, "text/plain;charset=utf-8");
+  await copyTextToClipboard(el.mailPreview.textContent);
+  showCopyToast("클립보드에 복사되었습니다");
 });
 
 document.getElementById("downloadWbsButton").addEventListener("click", () => {

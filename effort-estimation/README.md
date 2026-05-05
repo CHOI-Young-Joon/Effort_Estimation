@@ -27,7 +27,7 @@ C:\Antigravity_PJT\공수산정\effort-estimation\index.html
 - 공수 항목 수정 화면
 - 메일 문구 수정 화면
 - WBS 항목 수정 화면
-- 메일 문구 TXT 다운로드
+- 메일 첨부용 문구 복사
 - WBS 엑셀 호환 파일 다운로드
 
 ## 향후 백엔드 연결 시 확장 포인트
