@@ -929,10 +929,10 @@ function buildMailText() {
   const total = sumDays();
   const lines = buildGroupedEstimateText();
   const migrationInfo = a.workType === "이기종 마이그레이션"
-    ? `\n[마이그레이션 대상]\n- Source/Target: ${a.sourceDb} → ${a.targetDb}\n- 대상 환경/대수: ${envSummary()}\n- 데이터 규모: ${dataSizeLabel()}\n- Table/Index/LOB: ${a.tableCount || 0}/${a.indexCount || 0}/${a.lobCount || 0}\n- SQL 변경 대상: View ${a.viewCount || 0}, Procedure ${a.procedureCount || 0}, Function ${a.functionCount || 0}, Package ${a.packageCount || 0}, Trigger ${a.triggerCount || 0}\n- 다운타임/CDC: ${a.downtime} / ${a.cdcRequired}\n`
-    : `\n[대상 구성]\n- 제품/구성: ${a.product} / ${a.topology}${a.workType === "메이저 업그레이드" ? `\n- 업그레이드 버전: ${versionLabel()}` : ""}\n- 대상 환경/대수: ${envSummary()}\n`;
+    ? `\n[마이그레이션 대상]\n· Source/Target: ${a.sourceDb} → ${a.targetDb}\n· 대상 환경/대수: ${envSummary()}\n· 데이터 규모: ${dataSizeLabel()}\n· Table/Index/LOB: ${a.tableCount || 0}/${a.indexCount || 0}/${a.lobCount || 0}\n· SQL 변경 대상: View ${a.viewCount || 0}, Procedure ${a.procedureCount || 0}, Function ${a.functionCount || 0}, Package ${a.packageCount || 0}, Trigger ${a.triggerCount || 0}\n· 다운타임/CDC: ${a.downtime} / ${a.cdcRequired}\n`
+    : `\n[대상 구성]\n· 제품/구성: ${a.product} / ${a.topology}${a.workType === "메이저 업그레이드" ? `\n· 업그레이드 버전: ${versionLabel()}` : ""}\n· 대상 환경/대수: ${envSummary()}\n`;
 
-  return `안녕하세요.\n\n${a.customerName} 관련 공수 산정 초안 전달드립니다.\n\n[산정 요약]\n- 작업 구분: ${a.workType}\n- 총 예상 공수: ${total} M/D\n${migrationInfo}\n[상세 공수]\n${lines}\n\n상기 공수는 현재 제공된 정보를 기준으로 산정한 초안이며, 실제 일정, 접속 환경, 데이터 이관 속도, 테스트 범위, 고객 문의 대응 범위에 따라 조정될 수 있습니다.\n\n감사합니다.`;
+  return `안녕하세요.\n\n${a.customerName} 관련 공수 산정 초안 전달드립니다.\n\n[산정 요약]\n· 작업 구분: ${a.workType}\n· 총 예상 공수: ${total} M/D\n${migrationInfo}\n[상세 공수]\n${lines}\n\n상기 공수는 현재 제공된 정보를 기준으로 산정한 초안이며, 실제 일정, 접속 환경, 데이터 이관 속도, 테스트 범위, 고객 문의 대응 범위에 따라 조정될 수 있습니다.\n\n감사합니다.`;
 }
 
 function sumDays() {
@@ -972,7 +972,7 @@ function buildGroupedEstimateText() {
   return groupedEstimates().map((group) => {
     const items = group.items.map((item) => {
       const note = shouldShowEstimateNote(item) && item.note ? ` (${item.note})` : "";
-      return `  - ${item.task}: ${item.days} M/D${note}`;
+      return `  · ${item.task}: ${item.days} M/D${note}`;
     }).join("\n");
     return `${groupTitle(group)} - 소계 ${groupSubtotal(group)} M/D\n${items}`;
   }).join("\n\n");
