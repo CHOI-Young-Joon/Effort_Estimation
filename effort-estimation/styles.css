@@ -541,11 +541,19 @@ p {
   border-color: var(--accent);
 }
 
-.message-bubble .control-submit {
-  background: var(--button);
-  border-color: var(--button);
-  color: #ffffff;
+.message-bubble button.control-submit,
+.message-controls > button.control-submit {
+  background: var(--button) !important;
+  border-color: var(--button) !important;
+  color: #ffffff !important;
   font-weight: 400;
+}
+
+.message-bubble button.control-submit:hover,
+.message-controls > button.control-submit:hover {
+  background: var(--button) !important;
+  border-color: var(--button) !important;
+  color: #ffffff !important;
 }
 
 .env-check-grid,
@@ -849,7 +857,7 @@ td {
 
 th {
   background: #fbfbfd;
-  text-align: left;
+  text-align: center;
   color: var(--ink);
   font-weight: 600;
 }
@@ -860,7 +868,7 @@ th:last-child {
 }
 
 .estimate-group-row td {
-  background: #ffffff;
+  background: #f5f5f7;
   color: var(--ink);
   font-weight: 600;
   border-top: 1px solid var(--line-strong);
@@ -871,8 +879,13 @@ th:last-child {
 }
 
 .estimate-group-row td:nth-child(2) {
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
+}
+
+.estimate-group-row td:last-child {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .estimate-sequence {
@@ -882,7 +895,7 @@ th:last-child {
 }
 
 .wbs-group-row td {
-  background: #ffffff;
+  background: #f5f5f7;
   color: var(--ink);
   font-weight: 600;
   padding: 5px 10px;
@@ -895,6 +908,11 @@ th:last-child {
   vertical-align: middle;
 }
 
+.wbs-detail-row td:last-child {
+  text-align: center;
+  vertical-align: middle;
+}
+
 .wbs-sequence {
   width: 52px;
   text-align: center;
@@ -903,7 +921,7 @@ th:last-child {
 
 .estimate-detail-row td,
 .wbs-detail-row td {
-  height: 38px;
+  height: 34px;
 }
 
 .estimate-detail-row textarea,
@@ -944,6 +962,10 @@ td textarea {
   text-align: center;
 }
 
+.estimate-table td:nth-child(3) {
+  text-align: center;
+}
+
 .wbs-table td:nth-child(3) input,
 .wbs-table td:nth-child(4) input {
   font-variant-numeric: tabular-nums;
@@ -978,33 +1000,51 @@ td textarea:focus,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
   padding: 0;
   color: var(--ink);
   font-weight: 400;
+  font-size: 13px;
   line-height: 1;
   border-radius: 9999px;
 }
 
 .row-actions {
+  text-align: center;
+  vertical-align: middle;
   white-space: nowrap;
+}
+
+.row-actions .delete-button,
+.row-actions .row-action-button {
+  margin: 0 2px;
 }
 
 .row-action-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
   padding: 0;
-  margin-right: 4px;
+  margin-right: 0;
   background: transparent;
   border-color: rgba(0, 102, 204, 0.38);
   color: var(--accent);
   font-weight: 400;
+  font-size: 14px;
   line-height: 1;
   border-radius: 9999px;
+}
+
+.estimate-group-row .row-action-button,
+.wbs-detail-row .delete-button {
+  margin: 0 auto;
 }
 
 .mail-editor {

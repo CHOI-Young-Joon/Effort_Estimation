@@ -30,7 +30,9 @@ const labels = {
   currentVersion: "현재 버전",
   targetVersion: "목표 버전",
   includeAppSupport: "APP 테스트 지원",
+  appSupportEnvironments: "APP 테스트 지원 환경",
   includeMonitoring: "모니터링",
+  monitoringEnvironments: "모니터링 환경",
   includeMigration: "데이터 이관",
   sourceDb: "Source DB",
   targetDb: "Target DB",
@@ -97,7 +99,7 @@ const questions = {
     next: "environments",
   },
   environments: {
-    text: "대상 환경과 대수를 선택해주세요. 선택한 환경만 산정에 반영됩니다.",
+    text: "대상 환경과 대수를 선택해주세요.",
     type: "envCheckbox",
     options: envOptions,
     next: (a) => a.workType === "대개체" ? "includeMigration" : "includeAppSupport",
@@ -112,12 +114,22 @@ const questions = {
     text: "Application 테스트 문의 응대가 필요한가요?",
     type: "choice",
     options: ["예", "아니오"],
+    next: (a) => a.includeAppSupport === "예" ? "appSupportEnvironments" : "includeMonitoring",
+  },
+  appSupportEnvironments: {
+    text: "Application 테스트 문의 응대가 필요한 환경을 선택해주세요.",
+    type: "envSelect",
     next: "includeMonitoring",
   },
   includeMonitoring: {
     text: "오픈 또는 작업 후 모니터링 지원이 필요한가요?",
     type: "choice",
     options: ["예", "아니오"],
+    next: (a) => a.includeMonitoring === "예" ? "monitoringEnvironments" : "finish",
+  },
+  monitoringEnvironments: {
+    text: "오픈 또는 작업 후 모니터링 지원이 필요한 환경을 선택해주세요.",
+    type: "envSelect",
     next: "finish",
   },
   sourceDb: {
@@ -133,7 +145,7 @@ const questions = {
     next: "environmentsMigration",
   },
   environmentsMigration: {
-    text: "마이그레이션 대상 환경과 대수를 선택해주세요. 선택한 환경만 산정에 반영됩니다.",
+    text: "마이그레이션 대상 환경과 대수를 선택해주세요.",
     type: "envCheckbox",
     options: envOptions,
     saveAs: "environments",
@@ -278,7 +290,7 @@ function renderInput(q, target = el.choiceArea, questionId = state.currentQuesti
       const label = document.createElement("label");
       label.className = "env-check";
       label.innerHTML = `
-        <input type="checkbox" value="${escapeAttr(option)}">
+        <input type="checkbox" value="${escapeAttr(option)}" checked>
         <span>${option}</span>
         <input class="env-inline-count" type="number" min="0" step="1" value="1" data-env-count="${escapeAttr(option)}" aria-label="${escapeAttr(option)} 대수">
       `;
@@ -305,6 +317,35 @@ function renderInput(q, target = el.choiceArea, questionId = state.currentQuesti
     target.appendChild(button);
     el.freeTextInput.disabled = true;
     el.freeTextInput.placeholder = "환경 체크 후 대수를 입력하세요";
+  } else if (q.type === "envSelect") {
+    const options = selectedEnvironments();
+    const group = document.createElement("div");
+    group.className = "env-check-grid env-select-grid";
+    options.forEach((option) => {
+      const label = document.createElement("label");
+      label.className = "env-check";
+      label.innerHTML = `
+        <input type="checkbox" value="${escapeAttr(option)}" checked>
+        <span>${option}</span>
+      `;
+      group.appendChild(label);
+    });
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "control-submit";
+    button.textContent = "환경 선택 완료";
+    button.addEventListener("click", () => {
+      const selected = [...group.querySelectorAll("input:checked")].map((input) => input.value);
+      if (selected.length === 0) {
+        addMessage("bot", "최소 하나의 환경을 선택해주세요.");
+        return;
+      }
+      handleAnswer(selected, questionId);
+    });
+    target.appendChild(group);
+    target.appendChild(button);
+    el.freeTextInput.disabled = true;
+    el.freeTextInput.placeholder = "필요 없는 환경은 체크를 해제하세요";
   } else if (q.type === "objectCounts") {
     const fields = [
       ["tableCount", "Table"],
@@ -381,10 +422,17 @@ function handleAnswer(value, questionId = state.currentQuestionId) {
   if (cleanValue && typeof cleanValue === "object" && cleanValue.environments && cleanValue.envCounts) {
     state.answers.environments = cleanValue.environments;
     state.answers.envCounts = cleanValue.envCounts;
+    ["appSupportEnvironments", "monitoringEnvironments"].forEach((envKey) => {
+      if (Array.isArray(state.answers[envKey])) {
+        state.answers[envKey] = state.answers[envKey].filter((env) => cleanValue.environments.includes(env));
+      }
+    });
   } else if (cleanValue && typeof cleanValue === "object" && cleanValue.objectCounts) {
     Object.assign(state.answers, cleanValue.objectCounts);
   } else {
     state.answers[key] = cleanValue;
+    if (key === "includeAppSupport" && cleanValue !== "예") delete state.answers.appSupportEnvironments;
+    if (key === "includeMonitoring" && cleanValue !== "예") delete state.answers.monitoringEnvironments;
   }
   addMessage("user", formatAnswerForKey(key, cleanValue));
   updateSummary();
@@ -418,6 +466,13 @@ function validateAnswer(q, value) {
     return valid
       ? { ok: true }
       : { ok: false, message: "대상 환경을 최소 하나 이상 체크한 뒤 대수를 입력해주세요." };
+  }
+  if (q.type === "envSelect") {
+    const validOptions = selectedEnvironments();
+    const valid = Array.isArray(value) && value.length > 0 && value.every((item) => validOptions.includes(item));
+    return valid
+      ? { ok: true }
+      : { ok: false, message: "위에서 선택한 대상 환경 중 최소 하나를 선택해주세요." };
   }
   if (q.type === "objectCounts") {
     const valid = value && typeof value === "object" && value.objectCounts;
@@ -473,7 +528,10 @@ function reviewFlowIds() {
   if (a.workType === "메이저 업그레이드") ids.push("currentVersion", "targetVersion");
   ids.push("environments");
   if (a.workType === "대개체") ids.push("includeMigration");
-  ids.push("includeAppSupport", "includeMonitoring");
+  ids.push("includeAppSupport");
+  if (a.includeAppSupport === "예") ids.push("appSupportEnvironments");
+  ids.push("includeMonitoring");
+  if (a.includeMonitoring === "예") ids.push("monitoringEnvironments");
   return ids;
 }
 
@@ -486,6 +544,9 @@ function answerReviewItems() {
     }
     if (key === "environments") {
       return { questionId, label: labels.environments, value: formatAnswer({ environments: state.answers.environments || [], envCounts: state.answers.envCounts || {} }) };
+    }
+    if (key === "appSupportEnvironments" || key === "monitoringEnvironments") {
+      return { questionId, label: labels[key], value: formatAnswer(state.answers[key] || []) };
     }
     return { questionId, label: labels[key] || q.text, value: formatAnswerForKey(key, state.answers[key]) };
   }).filter((item) => item.value && item.value !== "undefined");
@@ -630,6 +691,12 @@ function syncDerivedFromEstimates() {
   updateOutput();
 }
 
+function syncMailFromWbs() {
+  state.mailText = buildMailText();
+  el.mailEditor.value = state.mailText;
+  updateOutput();
+}
+
 function selectedEnvironments() {
   const env = state.answers.environments;
   if (Array.isArray(env)) return env;
@@ -651,6 +718,12 @@ function envCount() {
 
 function envSummary() {
   return environmentCounts().map((item) => `${item.env} ${item.count}`).join(", ");
+}
+
+function supportEnvSelected(key, env) {
+  const selected = state.answers[key];
+  if (!Array.isArray(selected) || selected.length === 0) return true;
+  return selected.includes(env);
 }
 
 function parseNumber(value) {
@@ -787,10 +860,10 @@ function newBuildEstimate() {
   const estimates = [];
   environmentCounts().forEach(({ env, count }) => {
     pushEnvTasks(estimates, env, count, "신규 구성", a.product, a.topology, newBuildTasks(a.product, a.topology));
-    if (a.includeAppSupport === "예") {
+    if (a.includeAppSupport === "예" && supportEnvSelected("appSupportEnvironments", env)) {
       estimates.push({ phase: `${env} 고객 응대`, task: "Application 테스트 중 추가 문의 응대", days: count, note: "" });
     }
-    if (a.includeMonitoring === "예") {
+    if (a.includeMonitoring === "예" && supportEnvSelected("monitoringEnvironments", env)) {
       estimates.push({ phase: `${env} 모니터링`, task: "구성 후 상태 점검 및 모니터링", days: count, note: "" });
     }
   });
@@ -802,10 +875,10 @@ function majorUpgradeEstimate() {
   const estimates = [];
   environmentCounts().forEach(({ env, count }) => {
     pushEnvTasks(estimates, env, count, "메이저 업그레이드", a.product, a.topology, upgradeTasks(a.product, a.topology, env, a.upgradeMode));
-    if (a.includeAppSupport === "예" && env === "DEV") {
+    if (a.includeAppSupport === "예" && supportEnvSelected("appSupportEnvironments", env)) {
       estimates.push({ phase: `${env} 테스트 지원`, task: "Application 테스트 중 문의 응대", days: 3, note: "" });
     }
-    if (a.includeMonitoring === "예" && env !== "DEV") {
+    if (a.includeMonitoring === "예" && supportEnvSelected("monitoringEnvironments", env)) {
       estimates.push({ phase: `${env} 모니터링`, task: "업그레이드 후 모니터링", days: count, note: "" });
     }
   });
@@ -817,10 +890,10 @@ function replacementEstimate() {
   let estimates = [];
   environmentCounts().forEach(({ env, count }) => {
     pushEnvTasks(estimates, env, count, "대개체", a.product, a.topology, replacementTasks(a.product, a.topology, env, a.includeMigration));
-    if (a.includeAppSupport === "아니오") {
+    if (a.includeAppSupport === "아니오" || !supportEnvSelected("appSupportEnvironments", env)) {
       estimates = estimates.filter((item) => !(item.phase === `${env} 대개체` && item.task.includes("고객 Application 테스트 문의 응대")));
     }
-    if (a.includeMonitoring === "아니오") {
+    if (a.includeMonitoring === "아니오" || !supportEnvSelected("monitoringEnvironments", env)) {
       estimates = estimates.filter((item) => !(item.phase === `${env} 대개체` && item.task.includes("이관 후 모니터링")));
     }
   });
@@ -927,8 +1000,8 @@ function migrationWbs() {
 
 function buildMailText() {
   const a = state.answers;
-  const total = sumDays();
-  const lines = buildGroupedEstimateText();
+  const total = state.wbs.length > 0 ? sumWbsDays() : sumDays();
+  const lines = buildGroupedWbsMailText();
   const migrationInfo = a.workType === "이기종 마이그레이션"
     ? `\n[마이그레이션 대상]\n· Source/Target: ${a.sourceDb} → ${a.targetDb}\n· 대상 환경/대수: ${envSummary()}\n· 데이터 규모: ${dataSizeLabel()}\n· Table/Index/LOB: ${a.tableCount || 0}/${a.indexCount || 0}/${a.lobCount || 0}\n· SQL 변경 대상: View ${a.viewCount || 0}, Procedure ${a.procedureCount || 0}, Function ${a.functionCount || 0}, Package ${a.packageCount || 0}, Trigger ${a.triggerCount || 0}\n· 다운타임/CDC: ${a.downtime} / ${a.cdcRequired}\n`
     : `\n[대상 구성]\n· 제품/구성: ${a.product} / ${a.topology}${a.workType === "메이저 업그레이드" ? `\n· 업그레이드 버전: ${versionLabel()}` : ""}\n· 대상 환경/대수: ${envSummary()}\n`;
@@ -938,6 +1011,10 @@ function buildMailText() {
 
 function sumDays() {
   return state.estimates.reduce((sum, item) => sum + Number(item.days || 0), 0);
+}
+
+function sumWbsDays() {
+  return state.wbs.reduce((sum, item) => sum + Number(item.duration || 0), 0);
 }
 
 function groupedEstimates() {
@@ -979,6 +1056,16 @@ function buildGroupedEstimateText() {
   }).join("\n\n");
 }
 
+function buildGroupedWbsMailText() {
+  const groups = groupedWbsForExcel();
+  if (groups.length === 0) return buildGroupedEstimateText();
+  return groups.map((group) => {
+    const subtotal = group.rows.reduce((sum, item) => sum + Number(item.duration || 0), 0);
+    const items = group.rows.map((item) => `  · ${item.activity}: ${item.duration} M/D`).join("\n");
+    return `${group.groupTitle} - 소계 ${subtotal} M/D\n${items}`;
+  }).join("\n\n");
+}
+
 function renderEstimateRows() {
   el.estimateRows.innerHTML = "";
   groupedEstimates().forEach((group, groupIndex) => {
@@ -988,7 +1075,7 @@ function renderEstimateRows() {
     groupRow.innerHTML = `
       <td colspan="2">${escapeHtml(groupTitle(group))}</td>
       <td><span class="group-subtotal">${groupSubtotal(group)} M/D</span></td>
-      <td><button class="row-action-button" type="button" data-insert-after="${group.items[group.items.length - 1].index}">+</button></td>
+      <td></td>
     `;
     el.estimateRows.appendChild(groupRow);
 
@@ -1193,6 +1280,32 @@ function recalculateWbsScheduleFromStart() {
     cursor = addDays(end, 1);
   });
   renderWbsRows();
+}
+
+function wbsEndDateFromStart(startValue, durationValue) {
+  const start = parseDateOnly(startValue);
+  const duration = Math.max(0, Math.ceil(Number(durationValue || 0)));
+  const end = duration > 0 ? addDays(start, duration - 1) : new Date(start);
+  return formatDate(end);
+}
+
+function wbsStartDateFromEnd(endValue, durationValue) {
+  const end = parseDateOnly(endValue);
+  const duration = Math.max(0, Math.ceil(Number(durationValue || 0)));
+  const start = duration > 0 ? addDays(end, -(duration - 1)) : new Date(end);
+  return formatDate(start);
+}
+
+function syncWbsRowEndDate(index) {
+  const row = state.wbs[Number(index)];
+  if (!row || !row.start) return;
+  row.end = wbsEndDateFromStart(row.start, row.duration);
+}
+
+function syncWbsRowStartDate(index) {
+  const row = state.wbs[Number(index)];
+  if (!row || !row.end) return;
+  row.start = wbsStartDateFromEnd(row.end, row.duration);
 }
 
 function escapeHtml(value) {
@@ -1580,6 +1693,7 @@ document.getElementById("addLineButton").addEventListener("click", () => {
 document.getElementById("addWbsButton").addEventListener("click", () => {
   state.wbs.push({ phase: "추가 단계", activity: "", start: formatDate(new Date()), end: formatDate(new Date()), duration: 0, owner: "락플레이스", output: "", note: "" });
   renderWbsRows();
+  syncMailFromWbs();
 });
 
 document.getElementById("applyWbsStartButton").addEventListener("click", recalculateWbsScheduleFromStart);
@@ -1645,6 +1759,14 @@ el.wbsRows.addEventListener("input", (event) => {
   const field = event.target.dataset.field;
   if (index === undefined || !field) return;
   state.wbs[Number(index)][field] = field === "duration" ? Number(event.target.value || 0) : event.target.value;
+  if (field === "start" || field === "duration") {
+    syncWbsRowEndDate(index);
+    renderWbsRows();
+  } else if (field === "end") {
+    syncWbsRowStartDate(index);
+    renderWbsRows();
+  }
+  syncMailFromWbs();
 });
 
 el.wbsRows.addEventListener("click", (event) => {
@@ -1652,6 +1774,7 @@ el.wbsRows.addEventListener("click", (event) => {
   if (index === undefined) return;
   state.wbs.splice(Number(index), 1);
   renderWbsRows();
+  syncMailFromWbs();
 });
 
 el.mailEditor.addEventListener("input", updateOutput);
