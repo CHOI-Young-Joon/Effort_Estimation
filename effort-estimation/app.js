@@ -212,6 +212,7 @@ const el = {
   cancelResetButton: document.getElementById("cancelResetButton"),
   confirmResetButton: document.getElementById("confirmResetButton"),
   estimatingModal: document.getElementById("estimatingModal"),
+  workspace: document.querySelector(".workspace"),
 };
 
 function addMessage(role, text) {
@@ -608,8 +609,8 @@ function finishEstimate() {
   renderEstimateRows();
   renderWbsRows();
   updateOutput();
+  el.workspace?.classList.remove("is-chatting");
   revealEstimateTabs();
-  addMessage("bot", "산정 초안을 만들었습니다. 공수 산정 탭에서 상세 항목을 검토해주세요.");
   switchView("reviewView");
 }
 
@@ -1125,6 +1126,7 @@ function resetEstimate() {
   el.mailPreview.textContent = "";
   el.totalDays.textContent = "0 M/D";
   el.resultNote.textContent = "공수 산정 화면에서 항목을 조정한 뒤 최종 산출물을 생성하세요.";
+  el.workspace?.classList.add("is-chatting");
   hideEstimateTabs();
   updateChrome();
   switchView("chatView");

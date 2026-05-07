@@ -8,7 +8,7 @@
 </head>
 <body>
   <main class="app-shell">
-    <section class="workspace">
+    <section class="workspace is-chatting">
       <header class="top-panel">
         <div class="brand-block">
           <img class="brand-logo" src="./RockPlace_CI_transparent.png" alt="Rockplace">
@@ -40,18 +40,26 @@
 
       <section class="main-panel">
         <nav class="tabs" aria-label="작업 단계">
-          <button class="tab is-active" data-view="chatView">챗봇</button>
-          <button class="tab is-hidden" data-view="reviewView">공수 산정</button>
+          <button class="tab is-hidden is-active" data-view="reviewView">공수 산정</button>
           <button class="tab is-hidden" data-view="outputView">산출물 관리</button>
         </nav>
 
         <section id="chatView" class="view is-active">
-          <div id="chatLog" class="chat-log" aria-live="polite"></div>
-          <div id="choiceArea" class="choice-area"></div>
-          <form id="freeTextForm" class="input-row">
-            <input id="freeTextInput" type="text" autocomplete="off" placeholder="답변을 입력하세요">
-            <button type="submit">입력</button>
-          </form>
+          <div class="chat-window">
+            <header class="chat-window-header">
+              <div>
+                <span class="chat-window-kicker">RockPlace</span>
+                <h1>RockPlace 공수 산정</h1>
+              </div>
+              <span class="chat-window-status">입력 중</span>
+            </header>
+            <div id="chatLog" class="chat-log" aria-live="polite"></div>
+            <div id="choiceArea" class="choice-area"></div>
+            <form id="freeTextForm" class="input-row">
+              <input id="freeTextInput" type="text" autocomplete="off" placeholder="답변을 입력하세요">
+              <button type="submit">입력</button>
+            </form>
+          </div>
         </section>
 
         <section id="reviewView" class="view">
